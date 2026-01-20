@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { put } from '@vercel/blob';
 import { parseExcelBuffer } from '@/lib/excel-parser';
 import { initializeAnalysis } from '@/lib/openai-agent';
 
@@ -32,6 +33,22 @@ export async function POST(request: NextRequest) {
     const workbook = parseExcelBuffer(buffer, file.name);
     console.log('[Upload] Parsed workbook with', workbook.sheets.length, 'sheets');
 
+    // Save file to Vercel Blob Storage
+    let blobUrl: string | undefined;
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const blobPath = `uploads/${timestamp}_${file.name}`;
+      const blob = await put(blobPath, buffer, {
+        access: 'public',
+        contentType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      blobUrl = blob.url;
+      console.log('[Upload] Saved to blob storage:', blobUrl);
+    } catch (blobError) {
+      // Log but don't fail the upload if blob storage isn't configured
+      console.warn('[Upload] Blob storage not configured or failed:', blobError);
+    }
+
     // Initialize analysis session
     const analysisId = initializeAnalysis(workbook);
     console.log('[Upload] Created analysis session:', analysisId);
@@ -48,6 +65,7 @@ export async function POST(request: NextRequest) {
         })),
       },
       analysisId,
+      blobUrl,
     });
   } catch (error) {
     console.error('Upload error:', error);
