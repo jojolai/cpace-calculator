@@ -35,18 +35,30 @@ export async function POST(request: NextRequest) {
 
     // Save file to Vercel Blob Storage
     let blobUrl: string | undefined;
+    let blobError: string | undefined;
     try {
+      const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+      console.log('[Upload] Blob token configured:', hasToken);
+
+      if (!hasToken) {
+        throw new Error('BLOB_READ_WRITE_TOKEN environment variable not set');
+      }
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const blobPath = `uploads/${timestamp}_${file.name}`;
+      console.log('[Upload] Attempting to save to blob path:', blobPath);
+
       const blob = await put(blobPath, buffer, {
         access: 'public',
         contentType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       blobUrl = blob.url;
       console.log('[Upload] Saved to blob storage:', blobUrl);
-    } catch (blobError) {
+    } catch (err) {
       // Log but don't fail the upload if blob storage isn't configured
-      console.warn('[Upload] Blob storage not configured or failed:', blobError);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[Upload] Blob storage failed:', errorMsg);
+      blobError = errorMsg;
     }
 
     // Initialize analysis session
@@ -66,6 +78,7 @@ export async function POST(request: NextRequest) {
       },
       analysisId,
       blobUrl,
+      blobError,
     });
   } catch (error) {
     console.error('Upload error:', error);
